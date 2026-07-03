@@ -1,0 +1,10 @@
+{
+  "name": "channel-doctor",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Channel Doctor workspace",
+  "license": "UNLICENSED",
+  "scripts": {
+    "test": "node -e \"console.log('No tests configured yet')\""
+  }
+}
