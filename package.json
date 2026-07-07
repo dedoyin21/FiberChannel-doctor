@@ -1,10 +1,36 @@
 {
   "name": "channel-doctor",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "private": true,
-  "description": "Channel Doctor workspace",
+  "description": "Channel lifecycle guardrails and diagnostics for Fiber Network",
   "license": "UNLICENSED",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "channel-doctor": "./dist/cli/index.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "scripts": {
-    "test": "node -e \"console.log('No tests configured yet')\""
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "commander": "^13.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.0",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.9"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }
