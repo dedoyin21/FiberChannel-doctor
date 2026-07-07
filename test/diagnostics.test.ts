@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { diagnose, translateError } from '../src/diagnostics/index.js'
+import { canPay, diagnose, translateError } from '../src/diagnostics/index.js'
 import * as client from '../src/rpc/client.js'
 import type { RawChannel } from '../src/rpc/client.js'
 
 const CONFIG = { url: 'http://127.0.0.1:8227' }
+const hex = (value: bigint): string => `0x${value.toString(16)}`
 const BASE_CHANNEL: RawChannel = {
   channel_id: '0x26ce85d57fb4a1a826cbf4862358862317a83b775090625550d8be12c6ce9569',
   is_public: true,
@@ -147,5 +148,34 @@ describe('diagnostics - translateError', () => {
     expect(result.code).toBe('graph_unverified')
     expect(result.healthy).toBe(true)
     expect(result.plain).toContain('could not be verified')
+  })
+
+  it('canPay fails when liquidity is split across channels and no single channel can carry the amount', async () => {
+    vi.spyOn(client.fiberRpc, 'listChannels').mockResolvedValue({
+      channels: [
+        { ...BASE_CHANNEL, channel_id: '0xchan-a', local_balance: '0x2710', enabled: true },
+        { ...BASE_CHANNEL, channel_id: '0xchan-b', local_balance: '0x2710', enabled: true },
+      ],
+    })
+
+    const result = await canPay(CONFIG, 1_000_000_000n)
+
+    expect(result.canPay).toBe(false)
+    expect(result.reason).toContain('No single ready channel')
+  })
+
+  it('canPay succeeds when one enabled ready channel can carry the full amount', async () => {
+    vi.spyOn(client.fiberRpc, 'listChannels').mockResolvedValue({
+      channels: [
+        { ...BASE_CHANNEL, channel_id: '0xsmall', local_balance: hex(100_000_000n), enabled: true },
+        { ...BASE_CHANNEL, channel_id: '0xlarge', local_balance: hex(25_000_000_000n), enabled: true },
+      ],
+    })
+
+    const result = await canPay(CONFIG, 10_000_000_000n)
+
+    expect(result.canPay).toBe(true)
+    expect(result.maxChannelCapacity).toBeGreaterThanOrEqual(10_000_000_000n)
+    expect(result.suggestion).toContain('not confirmed')
   })
 })

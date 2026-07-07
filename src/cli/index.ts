@@ -25,7 +25,21 @@ function log(msg = ''): void {
   process.stdout.write(`${msg}\n`)
 }
 
-function fail(msg: string): never {
+function emitJson(value: unknown, stream: NodeJS.WriteStream = process.stdout): void {
+  stream.write(`${JSON.stringify(value, (_key, current) => typeof current === 'bigint' ? current.toString() : current, 2)}\n`)
+}
+
+function fail(msg: string, options: { json?: boolean; code?: string; details?: unknown } = {}): never {
+  if (options.json) {
+    emitJson({
+      ok: false,
+      error: msg,
+      ...(options.code ? { code: options.code } : {}),
+      ...(options.details !== undefined ? { details: options.details } : {}),
+    }, process.stderr)
+    process.exit(1)
+  }
+
   process.stderr.write(`\nERROR: ${msg}\n\n`)
   process.exit(1)
 }
@@ -42,6 +56,11 @@ function resolveConfig(cmd: CommanderCommand): { url: string } {
   const opts = cmd.optsWithGlobals() as { rpcUrl: string; testnet?: boolean }
   const url = hasCliOption('--rpc-url') ? opts.rpcUrl : opts.testnet ? TESTNET_RPC_URL : opts.rpcUrl
   return { url }
+}
+
+function shouldUseJson(cmd: CommanderCommand): boolean {
+  const opts = cmd.optsWithGlobals() as { json?: boolean }
+  return Boolean(opts.json)
 }
 
 function renderProgressLine(line: string, lastLength: { value: number }): void {
@@ -79,12 +98,18 @@ program
   .description('Channel lifecycle guardrails and diagnostics for Fiber Network')
   .version('0.1.0')
   .addOption(new Option('--rpc-url <url>', 'Fiber node RPC URL').default(DEFAULT_RPC_URL).env('FIBER_RPC_URL'))
+  .addOption(new Option('--json', 'Print machine-readable JSON output'))
   .addOption(new Option('--testnet', 'Use the public Fiber testnet RPC node'))
 
 program.command('status').description('List all channels with decoded balances').action(async (_: unknown, cmd: CommanderCommand) => {
   const config = resolveConfig(cmd)
+  const json = shouldUseJson(cmd)
   try {
     const channels = await listNormalized(config)
+    if (json) {
+      emitJson({ ok: true, count: channels.length, channels })
+      return
+    }
     if (!channels.length) {
       log('No channels found.')
       return
@@ -105,14 +130,20 @@ program.command('status').description('List all channels with decoded balances')
       log('-'.repeat(60))
     }
   } catch (e) {
-    fail((e as Error).message)
+    fail((e as Error).message, { json, code: 'status_failed' })
   }
 })
 
 program.command('check-open <peerId> <amountCKB>').description('Validate before opening a channel').action(async (peerId: string, amountCKB: string, _: unknown, cmd: CommanderCommand) => {
   const config = resolveConfig(cmd)
+  const json = shouldUseJson(cmd)
   try {
     const { ok, checks } = await checkOpen({ config, peerId, fundingAmountShannon: shannonFromCKB(amountCKB) })
+    if (json) {
+      emitJson({ ok, peerId, amountCKB, checks })
+      if (!ok) process.exit(1)
+      return
+    }
     log(`\nPre-open checks for ${amountCKB} CKB -> ${peerId.slice(0, 16)}...\n`)
     for (const c of checks) log(`  ${c.passed ? '[ok]' : '[x]'} ${c.message}`)
     log('')
@@ -124,7 +155,7 @@ program.command('check-open <peerId> <amountCKB>').description('Validate before 
     log('Fix issues above before opening.')
     process.exit(1)
   } catch (e) {
-    fail((e as Error).message)
+    fail((e as Error).message, { json, code: 'check_open_failed', details: { peerId, amountCKB } })
   }
 })
 
@@ -132,24 +163,34 @@ program.command('open <peerId> <amountCKB>').description('Open a channel and wai
   .option('--private', 'Open a private channel')
   .action(async (peerId: string, amountCKB: string, options: { private?: boolean }, cmd: CommanderCommand) => {
     const config = resolveConfig(cmd)
+    const json = shouldUseJson(cmd)
     try {
-      log(`\nOpening channel: ${amountCKB} CKB -> ${peerId.slice(0, 16)}...\n`)
+      if (!json) log(`\nOpening channel: ${amountCKB} CKB -> ${peerId.slice(0, 16)}...\n`)
       const result = await openAndWait({
         config,
         peerId,
         fundingAmountShannon: shannonFromCKB(amountCKB),
         isPublic: !options.private,
-        onProgress: (msg) => log(`  -> ${msg}`),
+        onProgress: json ? undefined : (msg) => log(`  -> ${msg}`),
       })
+      if (json) {
+        emitJson({ ok: true, peerId, amountCKB, isPublic: !options.private, ...result })
+        return
+      }
       log(`\nChannel ready\n  ID:     ${result.channelId}\n  Local:  ${result.channel.localBalanceFmt}\n  Usable: ${result.channel.usableCapacityFmt}`)
     } catch (e) {
-      fail((e as Error).message)
+      fail((e as Error).message, { json, code: 'open_failed', details: { peerId, amountCKB, isPublic: !options.private } })
     }
   })
 
 program.command('diagnose <channelId>').description('Diagnose a channel').action(async (channelId: string, _: unknown, cmd: CommanderCommand) => {
   const config = resolveConfig(cmd)
+  const json = shouldUseJson(cmd)
   try {
+    if (json) {
+      emitJson({ ok: true, diagnosis: await diagnose(config, channelId) })
+      return
+    }
     log(`\nDiagnosing ${channelId.slice(0, 16)}...\n`)
     const d = await diagnose(config, channelId)
     log(`  State:  ${d.channel.stateName}\n  Asset:  ${d.channel.asset}\n  Local:  ${d.channel.localBalanceFmt}\n  Usable: ${d.channel.usableCapacityFmt}\n  Code:   ${d.code}\n`)
@@ -157,30 +198,43 @@ program.command('diagnose <channelId>').description('Diagnose a channel').action
     if (d.suggestion) log(`  Tip: ${d.suggestion}`)
     log('')
   } catch (e) {
-    fail((e as Error).message)
+    fail((e as Error).message, { json, code: 'diagnose_failed', details: { channelId } })
   }
 })
 
 program.command('connect <multiaddr>').description('Connect to a Fiber peer by multiaddr').action(async (multiaddr: string, _: unknown, cmd: CommanderCommand) => {
   const config = resolveConfig(cmd)
+  const json = shouldUseJson(cmd)
   try {
     const result = await connectPeer(config, multiaddr)
+    if (json) {
+      emitJson({ ok: true, ...result })
+      return
+    }
     log(`\nConnected to peer ${result.peerId}`)
     log(`Confirmed in peer list: ${result.peer.connected_addr ?? multiaddr}\n`)
   } catch (e) {
     const translated = translateError(e as Error)
-    fail([translated.plain, translated.suggestion].filter(Boolean).join('\n'))
+    fail([translated.plain, translated.suggestion].filter(Boolean).join('\n'), { json, code: 'connect_failed', details: { multiaddr } })
   }
 })
 
 program.command('track-payment <paymentHash>').description('Poll payment status until it succeeds or fails').action(async (paymentHash: string, _: unknown, cmd: CommanderCommand) => {
   const config = resolveConfig(cmd)
+  const json = shouldUseJson(cmd)
   const lastLength = { value: 0 }
   try {
     const result = await trackPayment(config, paymentHash, ({ status, elapsedMs }) => {
+      if (json) return
       renderProgressLine(`  -> Status: ${status} (${Math.floor(elapsedMs / 1000)}s elapsed...)`, lastLength)
     })
-    if (process.stdout.isTTY) process.stdout.write('\n')
+    if (!json && process.stdout.isTTY) process.stdout.write('\n')
+
+    if (json) {
+      emitJson({ ok: result.status === 'Succeeded', ...result })
+      if (result.status !== 'Succeeded') process.exit(1)
+      return
+    }
 
     if (result.status === 'Succeeded') {
       log('\nPayment succeeded.')
@@ -195,16 +249,22 @@ program.command('track-payment <paymentHash>').description('Poll payment status 
     log('')
     process.exit(1)
   } catch (e) {
-    if (process.stdout.isTTY) process.stdout.write('\n')
-    fail((e as Error).message)
+    if (!json && process.stdout.isTTY) process.stdout.write('\n')
+    fail((e as Error).message, { json, code: 'track_payment_failed', details: { paymentHash } })
   }
 })
 
 program.command('check-close <channelId>').description('Check if safe to close').action(async (channelId: string, _: unknown, cmd: CommanderCommand) => {
   const config = resolveConfig(cmd)
+  const json = shouldUseJson(cmd)
   try {
-    log(`\nPre-close checks for ${channelId.slice(0, 16)}...\n`)
     const { safe, checks } = await checkClose(config, channelId)
+    if (json) {
+      emitJson({ ok: safe, channelId, safe, checks })
+      if (!safe) process.exit(1)
+      return
+    }
+    log(`\nPre-close checks for ${channelId.slice(0, 16)}...\n`)
     for (const c of checks) log(`  ${c.passed ? '[ok]' : '[warn]'} ${c.message}`)
     log('')
     if (safe) {
@@ -215,36 +275,47 @@ program.command('check-close <channelId>').description('Check if safe to close')
     log('Not safe to close yet.')
     process.exit(1)
   } catch (e) {
-    fail((e as Error).message)
+    fail((e as Error).message, { json, code: 'check_close_failed', details: { channelId } })
   }
 })
 
 program.command('close <channelId>').description('Close a channel').option('--force', 'Force-close').action(async (channelId: string, options: { force?: boolean }, cmd: CommanderCommand) => {
   const config = resolveConfig(cmd)
+  const json = shouldUseJson(cmd)
   try {
-    log(`\nClosing ${channelId.slice(0, 16)}...\n`)
-    await closeChannel(config, channelId, { force: options.force, onProgress: (msg) => log(`  -> ${msg}`) })
+    if (!json) log(`\nClosing ${channelId.slice(0, 16)}...\n`)
+    await closeChannel(config, channelId, { force: options.force, onProgress: json ? undefined : (msg) => log(`  -> ${msg}`) })
+    if (json) emitJson({ ok: true, channelId, force: Boolean(options.force) })
   } catch (e) {
-    fail((e as Error).message)
+    fail((e as Error).message, { json, code: 'close_failed', details: { channelId, force: Boolean(options.force) } })
   }
 })
 
-program.command('can-pay <amountCKB>').description('Check if you can send a payment').action(async (amountCKB: string, _: unknown, cmd: CommanderCommand) => {
+program.command('can-pay <amountCKB>').description('Check local outgoing capacity for a payment amount').action(async (amountCKB: string, _: unknown, cmd: CommanderCommand) => {
   const config = resolveConfig(cmd)
+  const json = shouldUseJson(cmd)
   try {
-    log(`\nChecking readiness for ${amountCKB} CKB...\n`)
     const result = await canPay(config, shannonFromCKB(amountCKB))
-    log(`  Usable: ${result.usableCapacityFmt}\n  ${result.canPay ? '[ok]' : '[x]'} ${result.reason}`)
+    if (json) {
+      emitJson({ ok: result.canPay, amountCKB, ...result })
+      if (!result.canPay) process.exit(1)
+      return
+    }
+    log(`\nChecking readiness for ${amountCKB} CKB...\n`)
+    log(`  Total usable: ${result.usableCapacityFmt}`)
+    log(`  Largest channel: ${result.maxChannelCapacityFmt}`)
+    log(`  ${result.canPay ? '[ok]' : '[x]'} ${result.reason}`)
     if (result.suggestion) log(`  Tip: ${result.suggestion}`)
     log('')
     if (!result.canPay) process.exit(1)
   } catch (e) {
-    fail((e as Error).message)
+    fail((e as Error).message, { json, code: 'can_pay_failed', details: { amountCKB } })
   }
 })
 
 program.command('watch <channelId>').description('Watch a channel until it closes or fails').action(async (channelId: string, _: unknown, cmd: CommanderCommand) => {
   const config = resolveConfig(cmd)
+  const json = shouldUseJson(cmd)
   const startedAt = Date.now()
   let interrupted = false
   const onSigint = () => { interrupted = true }
@@ -255,16 +326,20 @@ program.command('watch <channelId>').description('Watch a channel until it close
       const channels = await listNormalized(config)
       const channel = channels.find((item) => item.channelId === channelId)
       if (!channel) throw new Error(`Channel ${channelId.slice(0, 14)}... not found.`)
-      renderWatchFrame(channel, Date.now() - startedAt)
+      const elapsedMs = Date.now() - startedAt
+      if (json) emitJson({ event: 'snapshot', elapsedMs, channel })
+      else renderWatchFrame(channel, elapsedMs)
       if (channel.stateName === 'CLOSED' || channel.stateName === 'FAILED') {
-        log(`\nWatch stopped: channel entered ${channel.stateName}.`)
+        if (json) emitJson({ event: 'stopped', reason: 'terminal_state', state: channel.stateName, channelId })
+        else log(`\nWatch stopped: channel entered ${channel.stateName}.`)
         return
       }
       await sleep(3_000)
     }
-    log('\nWatch stopped.')
+    if (json) emitJson({ event: 'stopped', reason: 'interrupted', channelId })
+    else log('\nWatch stopped.')
   } catch (e) {
-    fail((e as Error).message)
+    fail((e as Error).message, { json, code: 'watch_failed', details: { channelId } })
   } finally {
     process.off('SIGINT', onSigint)
   }

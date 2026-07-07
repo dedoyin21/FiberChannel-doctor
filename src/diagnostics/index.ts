@@ -99,6 +99,8 @@ export interface ReadinessResult {
   suggestion: string
   usableCapacity: bigint
   usableCapacityFmt: string
+  maxChannelCapacity: bigint
+  maxChannelCapacityFmt: string
 }
 
 export async function diagnose(config: RpcConfig, channelId: string, testAmountShannon = 1000n): Promise<Diagnosis> {
@@ -160,35 +162,45 @@ export async function diagnose(config: RpcConfig, channelId: string, testAmountS
 
 export async function canPay(config: RpcConfig, amountShannon: bigint): Promise<ReadinessResult> {
   const { channels } = await fiberRpc.listChannels(config)
-  const normalized = channels.filter((channel) => channel.state.state_name === 'CHANNEL_READY').map(normalizeChannel)
+  const normalized = channels
+    .filter((channel) => channel.state.state_name === 'CHANNEL_READY' && channel.enabled)
+    .map(normalizeChannel)
   const totalUsable = normalized.reduce((sum, channel) => sum + channel.usableCapacity, 0n)
+  const maxChannelCapacity = normalized.reduce((max, channel) =>
+    channel.usableCapacity > max ? channel.usableCapacity : max, 0n)
 
   if (normalized.length === 0) {
     return {
       canPay: false,
-      reason: 'No CHANNEL_READY channels found.',
+      reason: 'No enabled CHANNEL_READY channels found.',
       suggestion: 'Open a channel first using channel-doctor open.',
       usableCapacity: 0n,
       usableCapacityFmt: '0 CKB',
+      maxChannelCapacity: 0n,
+      maxChannelCapacityFmt: '0 CKB',
     }
   }
 
-  if (totalUsable < amountShannon) {
+  if (maxChannelCapacity < amountShannon) {
     return {
       canPay: false,
-      reason: `Total usable capacity (${totalUsable} shannon) is less than requested (${amountShannon} shannon).`,
-      suggestion: `You need ${amountShannon - totalUsable} more shannon across your channels.`,
+      reason: `No single ready channel has enough usable capacity for ${amountShannon} shannon. Largest local send window is ${maxChannelCapacity} shannon, even though total ready capacity is ${totalUsable} shannon.`,
+      suggestion: `Open or rebalance a channel with at least ${amountShannon} shannon of usable local capacity.`,
       usableCapacity: totalUsable,
       usableCapacityFmt: `${totalUsable} shannon`,
+      maxChannelCapacity,
+      maxChannelCapacityFmt: `${maxChannelCapacity} shannon`,
     }
   }
 
   return {
     canPay: true,
-    reason: 'Sufficient capacity available.',
-    suggestion: '',
+    reason: `At least one ready channel has enough local send capacity for ${amountShannon} shannon.`,
+    suggestion: 'This only verifies local outgoing capacity. Destination reachability and end-to-end route availability are not confirmed by can-pay.',
     usableCapacity: totalUsable,
     usableCapacityFmt: `${totalUsable} shannon`,
+    maxChannelCapacity,
+    maxChannelCapacityFmt: `${maxChannelCapacity} shannon`,
   }
 }
 
