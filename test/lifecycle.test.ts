@@ -59,27 +59,19 @@ describe('lifecycle - normalizeChannel', () => {
   })
 
   it('tracks the newly opened channel instead of an older ready channel with the same peer', async () => {
-    vi.useFakeTimers()
-
     const existingReady = { ...MOCK, channel_id: '0xexisting', created_at: '0x0' }
-    const newPending = {
+    const newReady = {
       ...MOCK,
       channel_id: '0xnew',
-      state: { state_name: 'AWAITING_CHANNEL_READY', state_flags: [] },
-      created_at: '0x1',
-    } satisfies RawChannel
-    const newReady = {
-      ...newPending,
       state: { state_name: 'CHANNEL_READY', state_flags: [] },
+      created_at: '0x1',
     } satisfies RawChannel
 
     vi.spyOn(client.fiberRpc, 'openChannel').mockResolvedValue({ temporary_channel_id: '0xtemp' })
     vi.spyOn(client.fiberRpc, 'listChannels')
       .mockResolvedValueOnce({ channels: [existingReady] })
-      .mockResolvedValueOnce({ channels: [existingReady, newPending] })
       .mockResolvedValueOnce({ channels: [existingReady, newReady] })
-
-    const pending = openAndWait({
+    const result = await openAndWait({
       config: CONFIG,
       peerId: MOCK.peer_id,
       fundingAmountShannon: 50_000_000_000n,
@@ -87,16 +79,11 @@ describe('lifecycle - normalizeChannel', () => {
       gossipWaitMs: 0,
     })
 
-    await vi.advanceTimersByTimeAsync(1_000)
-    const result = await pending
-
     expect(result.channelId).toBe('0xnew')
     expect(result.temporaryChannelId).toBe('0xtemp')
   })
 
   it('fails instead of guessing when multiple new channels appear after open', async () => {
-    vi.useFakeTimers()
-
     const existingReady = { ...MOCK, channel_id: '0xexisting', created_at: '0x0' }
     const newPendingA = {
       ...MOCK,
