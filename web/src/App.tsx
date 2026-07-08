@@ -245,7 +245,7 @@ function DashboardPage({
   const [closeCheckPanel, setCloseCheckPanel] = useState<PanelState<{ safe: boolean; checks: CloseCheck[] }>>({ status: 'idle' })
   const [closePanel, setClosePanel] = useState<PanelState<{ ok: true; channelId: string; force: boolean }>>({ status: 'idle' })
 
-  const config: RpcConfig = { url: `/fiber-rpc?target=${encodeURIComponent(state.rpcTarget)}` }
+  const config: RpcConfig = { url: `/api/fiber-rpc?target=${encodeURIComponent(state.rpcTarget)}` }
 
   function patchState(patch: Partial<DashboardState>): void {
     setState((current) => ({ ...current, ...patch }))

@@ -12,23 +12,27 @@ export default defineConfig(() => {
     return chunks.length ? Buffer.concat(chunks) : undefined
   }
 
+  function resolveRpcTarget(req: import('node:http').IncomingMessage): URL {
+    const requestUrl = new URL(req.url ?? '/', 'http://localhost')
+    const target = requestUrl.searchParams.get('target')
+    if (!target) throw new Error('Missing target query parameter for RPC proxy.')
+
+    const targetUrl = new URL(target)
+    if (targetUrl.protocol !== 'http:' && targetUrl.protocol !== 'https:') {
+      throw new Error(`Unsupported RPC target protocol: ${targetUrl.protocol}`)
+    }
+
+    return targetUrl
+  }
+
   const rpcTunnel: Plugin = {
     name: 'fiber-rpc-tunnel',
     configureServer(server: ViteDevServer) {
-      server.middlewares.use('/fiber-rpc', async (req, res) => {
-        const requestUrl = new URL(req.url ?? '/', 'http://localhost')
-        const target = requestUrl.searchParams.get('target')
-
-        if (!target) {
-          res.statusCode = 400
-          res.setHeader('Content-Type', 'application/json')
-          res.end(JSON.stringify({ error: 'Missing target query parameter for /fiber-rpc.' }))
-          return
-        }
-
+      const handler = async (req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) => {
         try {
+          const targetUrl = resolveRpcTarget(req)
           const body = req.method === 'GET' || req.method === 'HEAD' ? undefined : await readBody(req)
-          const upstream = await fetch(target, {
+          const upstream = await fetch(targetUrl, {
             method: req.method,
             headers: {
               'Content-Type': req.headers['content-type'] ?? 'application/json',
@@ -45,10 +49,19 @@ export default defineConfig(() => {
           res.end(JSON.stringify({
             error: 'Fiber RPC proxy failed.',
             detail: (error as Error).message,
-            target,
+            target: (() => {
+              try {
+                return resolveRpcTarget(req).toString()
+              } catch {
+                return null
+              }
+            })(),
           }))
         }
-      })
+      }
+
+      server.middlewares.use('/api/fiber-rpc', handler)
+      server.middlewares.use('/fiber-rpc', handler)
     },
   }
 

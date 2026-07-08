@@ -92,66 +92,78 @@ export default defineConfig(function () {
             });
         });
     }
+    function resolveRpcTarget(req) {
+        var _a;
+        var requestUrl = new URL((_a = req.url) !== null && _a !== void 0 ? _a : '/', 'http://localhost');
+        var target = requestUrl.searchParams.get('target');
+        if (!target)
+            throw new Error('Missing target query parameter for RPC proxy.');
+        var targetUrl = new URL(target);
+        if (targetUrl.protocol !== 'http:' && targetUrl.protocol !== 'https:') {
+            throw new Error("Unsupported RPC target protocol: ".concat(targetUrl.protocol));
+        }
+        return targetUrl;
+    }
     var rpcTunnel = {
         name: 'fiber-rpc-tunnel',
         configureServer: function (server) {
             var _this = this;
-            server.middlewares.use('/fiber-rpc', function (req, res) { return __awaiter(_this, void 0, void 0, function () {
-                var requestUrl, target, body, _a, upstream, _b, _c, error_1;
-                var _d, _e, _f;
-                return __generator(this, function (_g) {
-                    switch (_g.label) {
+            var handler = function (req, res) { return __awaiter(_this, void 0, void 0, function () {
+                var targetUrl, body, _a, upstream, _b, _c, error_1;
+                var _d, _e;
+                return __generator(this, function (_f) {
+                    switch (_f.label) {
                         case 0:
-                            requestUrl = new URL((_d = req.url) !== null && _d !== void 0 ? _d : '/', 'http://localhost');
-                            target = requestUrl.searchParams.get('target');
-                            if (!target) {
-                                res.statusCode = 400;
-                                res.setHeader('Content-Type', 'application/json');
-                                res.end(JSON.stringify({ error: 'Missing target query parameter for /fiber-rpc.' }));
-                                return [2 /*return*/];
-                            }
-                            _g.label = 1;
-                        case 1:
-                            _g.trys.push([1, 7, , 8]);
-                            if (!(req.method === 'GET' || req.method === 'HEAD')) return [3 /*break*/, 2];
+                            _f.trys.push([0, 6, , 7]);
+                            targetUrl = resolveRpcTarget(req);
+                            if (!(req.method === 'GET' || req.method === 'HEAD')) return [3 /*break*/, 1];
                             _a = undefined;
-                            return [3 /*break*/, 4];
-                        case 2: return [4 /*yield*/, readBody(req)];
+                            return [3 /*break*/, 3];
+                        case 1: return [4 /*yield*/, readBody(req)];
+                        case 2:
+                            _a = _f.sent();
+                            _f.label = 3;
                         case 3:
-                            _a = _g.sent();
-                            _g.label = 4;
-                        case 4:
                             body = _a;
-                            return [4 /*yield*/, fetch(target, {
+                            return [4 /*yield*/, fetch(targetUrl, {
                                     method: req.method,
                                     headers: {
-                                        'Content-Type': (_e = req.headers['content-type']) !== null && _e !== void 0 ? _e : 'application/json',
+                                        'Content-Type': (_d = req.headers['content-type']) !== null && _d !== void 0 ? _d : 'application/json',
                                     },
                                     body: body ? new Uint8Array(body) : undefined,
                                 })];
-                        case 5:
-                            upstream = _g.sent();
+                        case 4:
+                            upstream = _f.sent();
                             res.statusCode = upstream.status;
-                            res.setHeader('Content-Type', (_f = upstream.headers.get('content-type')) !== null && _f !== void 0 ? _f : 'application/json');
+                            res.setHeader('Content-Type', (_e = upstream.headers.get('content-type')) !== null && _e !== void 0 ? _e : 'application/json');
                             _c = (_b = res).end;
                             return [4 /*yield*/, upstream.text()];
+                        case 5:
+                            _c.apply(_b, [_f.sent()]);
+                            return [3 /*break*/, 7];
                         case 6:
-                            _c.apply(_b, [_g.sent()]);
-                            return [3 /*break*/, 8];
-                        case 7:
-                            error_1 = _g.sent();
+                            error_1 = _f.sent();
                             res.statusCode = 502;
                             res.setHeader('Content-Type', 'application/json');
                             res.end(JSON.stringify({
                                 error: 'Fiber RPC proxy failed.',
                                 detail: error_1.message,
-                                target: target,
+                                target: (function () {
+                                    try {
+                                        return resolveRpcTarget(req).toString();
+                                    }
+                                    catch (_a) {
+                                        return null;
+                                    }
+                                })(),
                             }));
-                            return [3 /*break*/, 8];
-                        case 8: return [2 /*return*/];
+                            return [3 /*break*/, 7];
+                        case 7: return [2 /*return*/];
                     }
                 });
-            }); });
+            }); };
+            server.middlewares.use('/api/fiber-rpc', handler);
+            server.middlewares.use('/fiber-rpc', handler);
         },
     };
     return {
