@@ -1,7 +1,4 @@
 {
-  "rewrites": [
-    { "source": "/dashboard", "destination": "/index.html" },
-    { "source": "/dashboard/docs", "destination": "/index.html" },
-    { "source": "/dashboard/:path*", "destination": "/index.html" }
-  ]
+  "buildCommand": "vite build",
+  "outputDirectory": "dist"
 }
