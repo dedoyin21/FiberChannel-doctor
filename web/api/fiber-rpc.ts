@@ -2,7 +2,7 @@ type RequestLike = {
   method?: string
   query?: Record<string, string | string[] | undefined>
   headers: Record<string, string | string[] | undefined>
-} & Partial<AsyncIterable<Uint8Array | string | Buffer>>
+} & Partial<AsyncIterable<Uint8Array | string>>
 
 type ResponseLike = {
   status: (code: number) => ResponseLike
@@ -23,16 +23,34 @@ function getTarget(req: RequestLike): URL {
   return target
 }
 
-async function readBody(req: RequestLike): Promise<Buffer | undefined> {
+async function readBody(req: RequestLike): Promise<Uint8Array | undefined> {
   if (!req[Symbol.asyncIterator]) return undefined
 
-  const chunks: Buffer[] = []
-  const stream = req as AsyncIterable<Uint8Array | string | Buffer>
+  const chunks: Uint8Array[] = []
+  const stream = req as AsyncIterable<Uint8Array | string>
   for await (const chunk of stream) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+    chunks.push(normalizeChunk(chunk))
   }
 
-  return chunks.length ? Buffer.concat(chunks) : undefined
+  return chunks.length ? concatChunks(chunks) : undefined
+}
+
+function normalizeChunk(chunk: Uint8Array | string): Uint8Array {
+  if (typeof chunk === 'string') return new TextEncoder().encode(chunk)
+  return chunk
+}
+
+function concatChunks(chunks: Uint8Array[]): Uint8Array {
+  const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0)
+  const combined = new Uint8Array(totalLength)
+  let offset = 0
+
+  for (const chunk of chunks) {
+    combined.set(chunk, offset)
+    offset += chunk.length
+  }
+
+  return combined
 }
 
 export default async function handler(req: RequestLike, res: ResponseLike): Promise<void> {

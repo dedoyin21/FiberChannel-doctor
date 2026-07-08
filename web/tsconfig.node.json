@@ -5,7 +5,9 @@
     "module": "ESNext",
     "moduleResolution": "Node",
     "allowSyntheticDefaultImports": true,
-    "types": ["node"]
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "outDir": ".types-node"
   },
   "include": ["vite.config.ts", "tailwind.config.ts", "api/**/*.ts"]
 }
