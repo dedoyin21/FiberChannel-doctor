@@ -3,19 +3,20 @@ declare const _default: {
     theme: {
         extend: {
             colors: {
-                paper: string;
-                ink: string;
-                fog: string;
-                pine: string;
-                ember: string;
-                ocean: string;
-                cream: string;
+                canvas: string;
+                carbon: string;
+                smoke: string;
+                signal: string;
+                lagoon: string;
+                gold: string;
+                plum: string;
+                chalk: string;
             };
             boxShadow: {
                 card: string;
             };
             backgroundImage: {
-                grid: string;
+                dots: string;
             };
             fontFamily: {
                 display: [string, string, string];
