@@ -1,14 +1,30 @@
 # Channel Doctor
 
-`Channel Doctor` is a reusable CLI and TypeScript helper library for operating Fiber Network channels more safely.
+`Channel Doctor` is a reusable CLI and TypeScript toolkit for making Fiber Network channel operations safer, clearer, and easier to automate.
 
-It focuses on the part that many developer tools skip: turning raw Fiber RPC responses into clear lifecycle checks, safer channel workflows, and operator-friendly diagnostics.
+Instead of asking developers and node operators to work directly with raw Fiber RPC output, it adds a missing operations layer on top: pre-flight safety checks, channel lifecycle guardrails, graph-aware diagnostics, and machine-friendly JSON output.
+
+## Project Summary
+
+Fiber already gives developers a node and an RPC interface.
+
+What it does not yet make easy is the operational work around payment channels: knowing when it is safe to open, understanding why a channel is not usable yet, avoiding mistakes when multiple channels exist with the same peer, checking whether a public channel has really propagated into the graph, and deciding whether it is safe to close.
+
+`Channel Doctor` is built for that gap.
+
+It helps developers and operators move from raw node responses to clear decisions:
+
+- Is this channel actually ready?
+- Is this payment amount locally sendable?
+- Is this public channel visible yet?
+- Is it safe to close now?
+- Am I looking at the right newly opened channel?
+
+In short, `Channel Doctor` is reusable diagnostics and channel-operations infrastructure for Fiber.
 
 ## What Problem This Solves
 
-Fiber already provides the core node and RPC layer.
-
-What is still painful in practice is the layer around it:
+Fiber already provides the core node and RPC layer. What is still painful in practice is everything around it:
 
 - knowing whether it is actually safe to open a channel
 - avoiding mistakes when multiple channels exist with the same peer
