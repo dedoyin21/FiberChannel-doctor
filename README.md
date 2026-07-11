@@ -1,297 +1,135 @@
 # Channel Doctor
 
-`Channel Doctor` is a reusable CLI and TypeScript toolkit for making Fiber Network channel operations safer, clearer, and easier to automate.
+Channel Doctor is a TypeScript toolkit, CLI, and browser dashboard for safer Fiber Network channel operations.
 
-Instead of asking developers and node operators to work directly with raw Fiber RPC output, it adds a missing operations layer on top: pre-flight safety checks, channel lifecycle guardrails, graph-aware diagnostics, and machine-friendly JSON output.
+It sits on top of the Fiber RPC layer and turns raw node responses into practical operator workflows like:
 
-## Project Summary
+- checking whether it is safe to open a channel
+- tracking the correct newly opened channel until it becomes ready
+- diagnosing whether a channel is usable yet
+- checking whether local liquidity can support a payment amount
+- warning before unsafe channel closure
 
-Fiber already gives developers a node and an RPC interface.
+The repository includes two deliverables:
 
-What it does not yet make easy is the operational work around payment channels: knowing when it is safe to open, understanding why a channel is not usable yet, avoiding mistakes when multiple channels exist with the same peer, checking whether a public channel has really propagated into the graph, and deciding whether it is safe to close.
+- a reusable TypeScript core and CLI in the repo root
+- a React dashboard in [`web/`](./web) that can be deployed to Vercel
 
-`Channel Doctor` is built for that gap.
+## Why This Project Exists
 
-It helps developers and operators move from raw node responses to clear decisions:
+Fiber provides the node and RPC primitives, but everyday channel operations still require a lot of manual interpretation. Channel Doctor fills that gap with guardrails, diagnostics, and JSON-friendly output for scripts, dashboards, and operator tooling.
 
-- Is this channel actually ready?
-- Is this payment amount locally sendable?
-- Is this public channel visible yet?
-- Is it safe to close now?
-- Am I looking at the right newly opened channel?
+In practice, it helps answer questions like:
 
-In short, `Channel Doctor` is reusable diagnostics and channel-operations infrastructure for Fiber.
+- Is this peer and funding amount safe to use for a new channel?
+- Did the channel I just opened actually become ready?
+- Is this public channel visible in the graph yet, or is gossip still catching up?
+- Can I send this amount with my current local liquidity?
+- Is it safe to close this channel right now?
 
-## What Problem This Solves
+## Main Features
 
-Fiber already provides the core node and RPC layer. What is still painful in practice is everything around it:
-
-- knowing whether it is actually safe to open a channel
-- avoiding mistakes when multiple channels exist with the same peer
-- understanding whether a public channel is really visible in the graph yet
-- checking whether a payment amount is locally sendable without overclaiming route success
-- knowing whether it is safe to close a channel while TLCs are still in flight
-- turning confusing node errors into plain-English guidance
-
-`Channel Doctor` is built to close that operations and diagnostics gap.
-
-## Hackathon Fit
-
-This project fits best under:
-
-`Node, Routing, Cross-chain, and Diagnostics Infrastructure`
-
-Its strongest contribution is:
-
-- `Diagnostics Infrastructure`
-- `Node Operations Infrastructure`
-
-It does not claim to be a full routing engine, cross-chain stack, or merchant platform.
-
-## Who This Is For
-
-- Fiber node operators
-- CKB and Fiber developers
-- teams building internal tooling around Fiber nodes
-- anyone who wants a reusable CLI and JSON-friendly automation surface for channel workflows
-
-## What It Does Today
-
-- Lists channels with decoded balances and usable capacity
-- Checks whether opening a channel is safe
-- Opens a channel and waits for the correct newly created channel to become ready
-- Diagnoses channel readiness using local state plus public graph visibility
-- Checks local outgoing payment capacity without falsely treating pooled liquidity as guaranteed route success
-- Tracks payment status until success or failure
-- Checks whether closing a channel is safe
-- Closes channels with guardrails
-- Watches channel state over time
-- Exposes machine-readable `--json` output for automation
-
-## Real Guarantees
-
-This project is meant to be honest about what it verifies.
-
-- `check-open` verifies operational preconditions that are visible through the current RPC usage in this repo.
-- `open` tracks the newly opened channel instead of blindly selecting any ready channel for the same peer.
-- `diagnose` verifies public graph visibility for public channels and handles gossip delay explicitly.
-- `can-pay` verifies local outgoing capacity only.
-
-## What It Does Not Claim
-
-- It does **not** prove end-to-end route success.
-- It does **not** yet provide deep multi-asset infrastructure.
-- It does **not** replace the Fiber node or the full Fiber RPC surface.
-- It is **not** a full merchant, LSP, or cross-chain stack.
-
-## Features
-
-### 1. Safer Open Flow
-
-When a new channel is opened, `Channel Doctor` snapshots existing channels first and then tracks the newly created one instead of guessing by `peer_id` alone.
-
-This avoids false success when multiple channels already exist with the same peer.
-
-### 2. Pre-Open Guardrails
-
-Before opening a channel, the tool checks:
-
-- node identity responsiveness
-- peer connectivity
-- existing non-closed channels with the same peer
-- minimum reserve clearance
-- asset recognition
-- positive funding amount
-
-### 3. Graph-Aware Diagnostics
-
-For public channels, diagnostics use `graph_channels` visibility instead of relying only on route-guessing heuristics.
-
-This allows the tool to distinguish between:
-
-- channel not ready
-- zero usable capacity
-- gossip delay
-- channel locally ready but still not visible in the public graph
-- graph visibility not verifiable
-
-### 4. Honest Payment Readiness
-
-`can-pay` no longer says “yes” only because liquidity is split across multiple channels.
-
-It now checks whether at least one enabled ready channel has enough local outgoing capacity for the requested amount, and clearly warns that route success is still not guaranteed.
-
-### 5. JSON Output for Automation
-
-Every major command supports `--json`, which makes the project usable by:
-
-- scripts
-- dashboards
-- bots
-- CI jobs
-- operator tooling
+- `status` lists normalized channels with decoded balances and usable capacity
+- `connect` connects to a Fiber peer and confirms it appears in peer listings
+- `check-open` runs pre-open safety checks before funding a channel
+- `open` opens a channel and tracks the newly created channel instead of guessing by peer ID
+- `diagnose` explains channel health, readiness, and public graph visibility
+- `can-pay` checks honest local outgoing capacity without overclaiming route success
+- `track-payment` polls a payment until it succeeds or fails
+- `check-close` warns about TLCs and unsafe close timing
+- `close` requests cooperative close or force-close
+- `watch` streams channel snapshots over time
 
 ## Repository Layout
 
 ```text
-src/
-  cli/           Command-line interface
-  diagnostics/   Channel diagnosis and payment readiness checks
-  lifecycle/     Channel normalization and open flow tracking
-  network/       Peer connection helpers
-  payments/      Payment tracking
-  pre-close/     Safe close checks
-  pre-open/      Safe open checks
-  resolver/      Asset and amount helpers
-  rpc/           Fiber RPC wrapper
-
-test/            Unit tests
+src/              TypeScript library and CLI
+test/             Unit tests
+web/              React dashboard + Vercel deployment target
+web/api/          Serverless Fiber RPC proxy for hosted deployments
+web/src/          Dashboard UI
 ```
 
 ## Requirements
 
 - Node.js `18+`
+- npm
 - a reachable Fiber RPC endpoint
 
-Default RPC URL:
+Default local RPC URL:
 
 ```text
 http://127.0.0.1:8227
 ```
 
-Public testnet shortcut:
+Public testnet shortcut used by the CLI and dashboard:
 
 ```text
---testnet
+http://18.162.235.225:8227
 ```
 
-## Installation
+## Local Setup
+
+Install dependencies for both the root package and the web app:
 
 ```bash
 npm install
+npm --prefix web install
+```
+
+Build the CLI/library:
+
+```bash
 npm run build
 ```
 
-On Windows PowerShell, if `npm` script execution is blocked, use:
+Run the web dashboard locally:
 
-```powershell
-npm.cmd install
-npm.cmd run build
+```bash
+npm run web:dev
 ```
 
-## Configuration
+The local dashboard runs through Vite and proxies Fiber RPC requests through `/api/fiber-rpc`, so it can talk to a local node like `http://127.0.0.1:8227`.
 
-You can set the RPC URL with either:
+## CLI Usage
 
-- `--rpc-url <url>`
-- `FIBER_RPC_URL`
+Build first:
 
-Example:
-
-```powershell
-$env:FIBER_RPC_URL="http://127.0.0.1:8227"
+```bash
+npm run build
 ```
 
-## Quick Start
-
-### Check current channels
+Then run commands from the repo root:
 
 ```bash
 node dist/cli/index.js status
-```
-
-### Check whether opening is safe
-
-```bash
 node dist/cli/index.js check-open <peerId> 100
-```
-
-### Open a channel
-
-```bash
 node dist/cli/index.js open <peerId> 100
-```
-
-### Diagnose a channel
-
-```bash
 node dist/cli/index.js diagnose <channelId>
-```
-
-### Check local send capacity
-
-```bash
 node dist/cli/index.js can-pay 10
-```
-
-### Check whether closing is safe
-
-```bash
 node dist/cli/index.js check-close <channelId>
-```
-
-### Close a channel
-
-```bash
 node dist/cli/index.js close <channelId>
-```
-
-### Watch a channel over time
-
-```bash
 node dist/cli/index.js watch <channelId>
 ```
 
-## JSON Mode
+Useful global flags:
 
-Use `--json` for machine-readable output.
-
-Examples:
-
-```bash
-node dist/cli/index.js status --json
-node dist/cli/index.js check-open <peerId> 100 --json
-node dist/cli/index.js diagnose <channelId> --json
-node dist/cli/index.js can-pay 10 --json
-```
-
-For `watch`, JSON mode emits event-style snapshots:
-
-```bash
-node dist/cli/index.js watch <channelId> --json
-```
-
-## Command Summary
-
-- `status`
-  Lists channels with decoded balances and usable capacity.
-- `connect <multiaddr>`
-  Connects to a Fiber peer and confirms it appears in peer listings.
-- `check-open <peerId> <amountCKB>`
-  Runs pre-open safety checks before funding a new channel.
-- `open <peerId> <amountCKB>`
-  Opens a channel and waits for the newly created channel to reach `CHANNEL_READY`.
-- `diagnose <channelId>`
-  Explains channel health and graph visibility in plain language.
-- `can-pay <amountCKB>`
-  Checks local outgoing capacity for the requested amount.
-- `track-payment <paymentHash>`
-  Polls payment status until success or failure.
-- `check-close <channelId>`
-  Warns about in-flight TLCs and unsafe close states.
-- `close <channelId>`
-  Requests cooperative or forced closure.
-- `watch <channelId>`
-  Watches channel state until terminal stop conditions.
-
-## Library Usage
-
-The package also exports reusable modules for application code.
+- `--rpc-url <url>` points to a specific Fiber node
+- `--testnet` uses the public testnet RPC
+- `--json` emits machine-readable output
 
 Example:
 
+```bash
+node dist/cli/index.js status --rpc-url http://127.0.0.1:8227 --json
+```
+
+## Library Usage
+
+The root package also exports the reusable core:
+
 ```ts
-import { checkOpen, diagnose, canPay } from 'channel-doctor'
+import { canPay, checkOpen, diagnose } from 'channel-doctor'
 
 const config = { url: 'http://127.0.0.1:8227' }
 
@@ -305,115 +143,80 @@ const readiness = await canPay(config, 1_000_000_000n)
 const diagnosis = await diagnose(config, '0xchannelid')
 ```
 
-## Running Tests
+## Web Dashboard
+
+The `web/` app is a React dashboard for running the same checks visually. It reuses the shared TypeScript core and exposes a Fiber RPC proxy endpoint through:
+
+- local development middleware in `web/vite.config.ts`
+- a serverless function in [`web/api/fiber-rpc.ts`](./web/api/fiber-rpc.ts) for hosted deployments
+
+The dashboard supports:
+
+- channel status
+- peer connection
+- pre-open checks
+- open flow tracking
+- diagnosis
+- payment readiness
+- payment tracking
+- close safety checks
+- close requests
+
+## Deploying From GitHub
+
+This repository is ready to be connected to GitHub and deployed with Vercel.
+
+### Option 1: Deploy the dashboard with Vercel
+
+1. Push the repository to GitHub.
+2. In Vercel, create a new project from that GitHub repository.
+3. Set the project root directory to `web`.
+4. Keep the existing repo config from [`web/vercel.json`](./web/vercel.json):
+
+```json
+{
+  "buildCommand": "vite build",
+  "outputDirectory": "dist"
+}
+```
+
+5. Deploy.
+
+Important deployment note:
+
+- the hosted dashboard can only reach Fiber RPC endpoints that are publicly reachable from Vercel
+- `http://127.0.0.1:8227` works for local development, but not from a deployed Vercel app
+- for a hosted deployment, enter a public or otherwise reachable RPC endpoint in the dashboard
+
+### Option 2: Use the repo as a CLI/library only
+
+If you are not deploying the dashboard, GitHub users can still clone the repo and run:
 
 ```bash
+npm install
 npm run build
 npm test
 ```
 
-Windows PowerShell:
+Then they can use the CLI locally against their own Fiber node.
 
-```powershell
-npm.cmd run build
-npm.cmd test
+## Testing
+
+Run the current test suite from the repo root:
+
+```bash
+npm test
 ```
 
-Current status:
+## Project Fit
 
-- `TypeScript build passes`
-- `46/46 tests passing`
-
-## Demo Ideas
-
-The strongest demo flow is:
-
-1. Show `check-open` catching a conflicting existing channel.
-2. Open a channel to a peer that already has another channel and show the tool selects the correct new channel.
-3. Run `diagnose` immediately after open and show gossip-delay or graph visibility behavior.
-4. Run `can-pay --json` and show the difference between total liquidity and single-channel sendability.
-5. Show `check-close` warning on unsafe closure conditions.
-
-## Technical Breakdown
-
-### RPC Layer
-
-The project wraps selected Fiber RPC methods in a typed client:
-
-- `node_info`
-- `list_peers`
-- `connect_peer`
-- `open_channel`
-- `list_channels`
-- `graph_channels`
-- `send_payment`
-- `get_payment`
-- `close_channel`
-
-### Lifecycle Logic
-
-The open flow avoids ambiguous correlation by:
-
-1. snapshotting peer channels before open
-2. opening the channel
-3. polling peer channels
-4. following only channels that were not present in the snapshot
-5. failing instead of guessing when multiple new channels appear
-
-### Diagnostics Logic
-
-The diagnostic flow combines:
-
-- local channel state
-- enabled/disabled status
-- usable send capacity
-- TLC in-flight state
-- public graph visibility for public channels
-
-### CLI + Automation Surface
-
-The CLI is designed for both humans and machines:
-
-- human-readable output by default
-- `--json` output for automation
-- non-zero exit codes on failed safety checks or payment failures
-
-## Fiber Infrastructure Gap Addressed
-
-The gap is not “Fiber lacks a node.”
-
-The gap is:
-
-`Fiber needs better reusable operational infrastructure around its node and RPC layer so developers and operators can use channels safely, understand failures quickly, and automate channel workflows without writing one-off glue code.`
-
-That is the gap `Channel Doctor` addresses.
-
-## Roadmap
-
-Short term:
-
-- improve README examples and demo coverage
-- add end-to-end runnable demos against a live Fiber environment
-- expand JSON contract documentation
-
-Medium term:
-
-- improve asset discovery beyond the current hardcoded resolver
-- add deeper payment and route-readiness checks
-- expand RPC coverage for more advanced Fiber workflows
-
-Long term:
-
-- evolve into a fuller operator toolkit for Fiber node monitoring, diagnostics, and workflow automation
-- provide stronger integration hooks for services, dashboards, and internal ops tooling
+Channel Doctor fits best as diagnostics and channel-operations infrastructure for Fiber. It is strongest today as tooling for node operators, internal platform teams, and developers building on top of Fiber RPC.
 
 ## Limitations
 
-- `can-pay` does not prove end-to-end route success
-- asset support is still limited
-- payment tracking is still basic compared to service-grade monitoring
-- some diagnostic translation still relies on known error strings
-- this is currently strongest as diagnostics and channel-operations infrastructure, not a full multi-asset or merchant stack
+- `can-pay` checks local capacity, not guaranteed end-to-end route success
+- the project does not replace the Fiber node or its full RPC surface
+- hosted deployments depend on the target Fiber RPC endpoint being reachable from the deployment environment
 
 ## License
 

@@ -15,6 +15,7 @@ export class RpcError extends Error {
 }
 
 let _requestId = 0
+const STATE_CHANGING_METHODS = new Set(['connect_peer', 'open_channel', 'send_payment', 'close_channel'])
 
 export async function rpcCall<T>(
   config: RpcConfig,
@@ -32,7 +33,10 @@ export async function rpcCall<T>(
       body: JSON.stringify({ jsonrpc: '2.0', id, method, params }),
       signal: controller.signal,
     })
-    if (!res.ok) throw new RpcError(`HTTP ${res.status} from Fiber node`, res.status, method)
+    if (!res.ok) {
+      const detail = await readHttpErrorDetail(res)
+      throw new RpcError(formatHttpErrorMessage(res.status, method, detail), res.status, method)
+    }
     const json = (await res.json()) as { result?: T; error?: { code: number; message: string } }
     if (json.error) throw new RpcError(json.error.message, json.error.code, method)
     return json.result as T
@@ -43,6 +47,48 @@ export async function rpcCall<T>(
   } finally {
     clearTimeout(timer)
   }
+}
+
+async function readHttpErrorDetail(res: Response): Promise<string | null> {
+  const body = (await res.text()).trim()
+  if (!body) return null
+
+  try {
+    const json = JSON.parse(body) as {
+      error?: { message?: string } | string
+      detail?: string
+      message?: string
+    }
+
+    if (typeof json.error === 'object' && typeof json.error?.message === 'string' && json.error.message.trim()) {
+      return json.error.message.trim()
+    }
+    if (typeof json.detail === 'string' && json.detail.trim()) return json.detail.trim()
+    if (typeof json.message === 'string' && json.message.trim()) return json.message.trim()
+    if (typeof json.error === 'string' && json.error.trim()) return json.error.trim()
+  } catch {
+    return truncateErrorBody(body)
+  }
+
+  return truncateErrorBody(body)
+}
+
+function formatHttpErrorMessage(status: number, method: string, detail: string | null): string {
+  const prefix = `HTTP ${status} from Fiber node`
+  const base = detail ? `${prefix}: ${detail}` : prefix
+
+  if (status !== 403) return base
+
+  const hint = STATE_CHANGING_METHODS.has(method)
+    ? 'This RPC target may be read-only or require authorization for state-changing methods.'
+    : 'This RPC target may be read-only or require authorization.'
+  const lower = detail?.toLowerCase() ?? ''
+
+  return lower.includes('read-only') || lower.includes('authoriz') ? base : `${base}. ${hint}`
+}
+
+function truncateErrorBody(body: string): string {
+  return body.length > 300 ? `${body.slice(0, 297)}...` : body
 }
 
 export interface Peer { peer_id: string; connected_addr: string | null }

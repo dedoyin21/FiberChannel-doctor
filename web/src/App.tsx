@@ -61,6 +61,7 @@ const TESTNET_RPC_URL = 'http://18.162.235.225:8227'
 const DEFAULT_RPC_URL = 'http://127.0.0.1:8227'
 const DASHBOARD_PATH = '/dashboard'
 const DOCS_PATH = '/dashboard/docs'
+const TESTNET_RPC_ORIGIN = new URL(TESTNET_RPC_URL).origin
 
 const COMMANDS = [
   {
@@ -246,6 +247,7 @@ function DashboardPage({
   const [closePanel, setClosePanel] = useState<PanelState<{ ok: true; channelId: string; force: boolean }>>({ status: 'idle' })
 
   const config: RpcConfig = { url: `/api/fiber-rpc?target=${encodeURIComponent(state.rpcTarget)}` }
+  const rpcHint = getRpcTargetHint(state.rpcTarget)
 
   function patchState(patch: Partial<DashboardState>): void {
     setState((current) => ({ ...current, ...patch }))
@@ -317,9 +319,11 @@ function DashboardPage({
                   Public testnet
                 </button>
               </div>
-
-
-              
+              {rpcHint ? (
+                <div className="rounded-2xl border border-gold/20 bg-gold/10 px-4 py-3 text-sm leading-6 text-carbon/80">
+                  {rpcHint}
+                </div>
+              ) : null}
             </div>
           </aside>
         </div>
@@ -1001,6 +1005,19 @@ function viewFromPathname(pathname: string): View {
 
 function pathForView(view: View): string {
   return view === 'docs' ? DOCS_PATH : DASHBOARD_PATH
+}
+
+function getRpcTargetHint(target: string): string | null {
+  try {
+    const url = new URL(target)
+    if (url.origin === TESTNET_RPC_ORIGIN) {
+      return 'The public testnet shortcut is best for read-only checks. Actions like connect_peer and open_channel can return HTTP 403 unless this RPC endpoint belongs to a node you control.'
+    }
+  } catch {
+    return null
+  }
+
+  return null
 }
 
 function shannonFromCkb(value: string): bigint {
