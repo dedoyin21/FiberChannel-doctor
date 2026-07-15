@@ -91,7 +91,9 @@ function truncateErrorBody(body: string): string {
   return body.length > 300 ? `${body.slice(0, 297)}...` : body
 }
 
-export interface Peer { peer_id: string; connected_addr: string | null }
+export interface Peer { peer_id: string; connected_addr: string | null; pubkey: string | null }
+interface RawPeerV1 { peer_id: string; connected_addr: string | null }
+interface RawPeerV2 { pubkey?: string; address?: string | null }
 export interface UdtTypeScript { code_hash: string; hash_type: 'type' | 'data' | 'data1'; args: string }
 export interface NodeInfo {
   version: string
@@ -141,9 +143,12 @@ export const fiberRpc = {
   nodeInfo: (cfg: RpcConfig) => rpcCall<NodeInfo>(cfg, 'node_info', []),
   graphChannels: (cfg: RpcConfig, params: { limit?: string; after?: string } = {}) =>
     rpcCall<{ channels: GraphChannelInfo[]; last_cursor?: string }>(cfg, 'graph_channels', [params]),
-  listPeers: (cfg: RpcConfig) => rpcCall<{ peers: Peer[] }>(cfg, 'list_peers', [{}]),
+  listPeers: async (cfg: RpcConfig) => {
+    const result = await rpcCall<{ peers: Array<RawPeerV1 | RawPeerV2> }>(cfg, 'list_peers', [{}])
+    return { peers: result.peers.map(normalizePeer) }
+  },
   connectPeer: (cfg: RpcConfig, address: string, save = true) => rpcCall<void>(cfg, 'connect_peer', [{ address, save }]),
-  openChannel: (cfg: RpcConfig, params: { peer_id: string; funding_amount: string; public?: boolean; funding_udt_type_script?: UdtTypeScript }) =>
+  openChannel: (cfg: RpcConfig, params: { peer_id?: string; pubkey?: string; funding_amount: string; public?: boolean; funding_udt_type_script?: UdtTypeScript }) =>
     rpcCall<{ temporary_channel_id: string }>(cfg, 'open_channel', [params]),
   listChannels: (cfg: RpcConfig, peer_id?: string) =>
     rpcCall<{ channels: RawChannel[] }>(cfg, 'list_channels', [peer_id ? { peer_id } : {}]),
@@ -151,4 +156,28 @@ export const fiberRpc = {
     rpcCall<RawPayment>(cfg, 'send_payment', [params]),
   getPayment: (cfg: RpcConfig, payment_hash: string) => rpcCall<RawPayment>(cfg, 'get_payment', [{ payment_hash }]),
   closeChannel: (cfg: RpcConfig, channel_id: string, force = false) => rpcCall<void>(cfg, 'close_channel', [{ channel_id, force }]),
+}
+
+function normalizePeer(peer: RawPeerV1 | RawPeerV2): Peer {
+  if ('peer_id' in peer && typeof peer.peer_id === 'string') {
+    return {
+      peer_id: peer.peer_id,
+      connected_addr: typeof peer.connected_addr === 'string' ? peer.connected_addr : null,
+      pubkey: null,
+    }
+  }
+
+  const address = 'address' in peer && typeof peer.address === 'string' ? peer.address : null
+  const pubkey = 'pubkey' in peer && typeof peer.pubkey === 'string' ? peer.pubkey : null
+  const peerId = address ? extractPeerIdFromMultiaddr(address) ?? pubkey ?? 'unknown-peer' : pubkey ?? 'unknown-peer'
+  return {
+    peer_id: peerId,
+    connected_addr: address,
+    pubkey,
+  }
+}
+
+function extractPeerIdFromMultiaddr(multiaddr: string): string | null {
+  const match = /\/p2p\/([^/]+)$/.exec(multiaddr)
+  return match ? match[1] : null
 }

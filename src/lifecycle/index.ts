@@ -84,14 +84,10 @@ export async function openAndWait(params: OpenParams): Promise<OpenResult> {
   const { channels: existingPeerChannels } = await fiberRpc.listChannels(config, peerId)
   const existingChannelIds = new Set(existingPeerChannels.map((channel) => channel.channel_id))
   const openStartedAt = Date.now()
+  const openParams = await resolveOpenChannelParams(config, peerId, fundingAmountShannon, isPublic, udtTypeScript)
 
   onProgress('Opening channel...')
-  const { temporary_channel_id } = await fiberRpc.openChannel(config, {
-    peer_id: peerId,
-    funding_amount: `0x${fundingAmountShannon.toString(16)}`,
-    public: isPublic,
-    ...(udtTypeScript ? { funding_udt_type_script: udtTypeScript } : {}),
-  })
+  const { temporary_channel_id } = await fiberRpc.openChannel(config, openParams)
   onProgress(`Channel created (temp id: ${temporary_channel_id.slice(0, 14)}...)`)
   onProgress('Waiting for CHANNEL_READY...')
 
@@ -143,6 +139,25 @@ export async function listNormalized(config: RpcConfig, peerId?: string): Promis
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function resolveOpenChannelParams(
+  config: RpcConfig,
+  peerId: string,
+  fundingAmountShannon: bigint,
+  isPublic: boolean,
+  udtTypeScript?: { code_hash: string; hash_type: 'type' | 'data' | 'data1'; args: string },
+): Promise<{ funding_amount: string; public: boolean; peer_id?: string; pubkey?: string; funding_udt_type_script?: { code_hash: string; hash_type: 'type' | 'data' | 'data1'; args: string } }> {
+  const base = {
+    funding_amount: `0x${fundingAmountShannon.toString(16)}`,
+    public: isPublic,
+    ...(udtTypeScript ? { funding_udt_type_script: udtTypeScript } : {}),
+  }
+
+  const { peers } = await fiberRpc.listPeers(config)
+  const peer = peers.find((item) => item.peer_id === peerId)
+  if (peer?.pubkey) return { ...base, pubkey: peer.pubkey }
+  return { ...base, peer_id: peerId }
 }
 
 function findOpenedChannel(

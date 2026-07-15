@@ -212,12 +212,136 @@ npm test
 
 Channel Doctor fits best as diagnostics and channel-operations infrastructure for Fiber. It is strongest today as tooling for node operators, internal platform teams, and developers building on top of Fiber RPC.
 
-## Limitations
+## Hackathon Submission Notes
 
-- `can-pay` checks local capacity, not guaranteed end-to-end route success
-- the project does not replace the Fiber node or its full RPC surface
-- hosted deployments depend on the target Fiber RPC endpoint being reachable from the deployment environment
+## Team
+
+- Doyin
+
+### 1. Submission Category
+
+Category 2: Node, Routing, Cross-Chain, and Diagnostics Infrastructure
+
+Channel Doctor is best categorized here because it focuses on Fiber node operations, channel lifecycle safety, readiness diagnostics, liquidity visibility, and operator tooling on top of Fiber RPC.
+
+### 2. Project Overview
+
+Channel Doctor is a TypeScript toolkit, CLI, and browser dashboard for safer Fiber Network channel operations. It helps users connect peers, validate channel opens before funding, track channel readiness, inspect normalized balances and usable capacity, diagnose channel issues, and check whether a node is ready to send payments.
+
+The target audience is:
+
+- Fiber node operators
+- developers building apps or scripts on top of Fiber RPC
+- infrastructure teams supporting routing, payment operations, or support workflows
+- hackathon teams that need a simpler operational layer over raw Fiber RPC
+
+### 3. What Problem Does It Solve?
+
+Fiber provides the core node and RPC primitives, but channel operations still require a lot of manual interpretation. Operators often need to inspect peer state, funding readiness, channel state transitions, local versus remote balance, reserve constraints, liquidity availability, payment readiness, and close safety before taking action.
+
+Channel Doctor solves that infrastructure gap by translating raw Fiber RPC into guided operational workflows and human-readable diagnostics. It relates directly to Fiber Network infrastructure because it sits between the Fiber node and the operator, helping users:
+
+- reduce mistakes before opening or closing channels
+- understand whether a channel is actually usable
+- inspect liquidity in a practical way instead of raw hex values
+- troubleshoot readiness, gossip delay, or peer connectivity issues
+- automate safer channel operations through a reusable library and CLI
+
+### 4. System Design
+
+Important user flow:
+
+1. User points Channel Doctor to a Fiber RPC endpoint.
+2. The dashboard or CLI queries the node through the shared RPC client.
+3. Channel Doctor normalizes raw Fiber responses into readable balances, states, and checks.
+4. The user runs workflows such as connect peer, check open, open channel, diagnose, can-pay, or track-payment.
+5. Channel Doctor returns operational guidance rather than only raw RPC output.
+
+Important developer flow:
+
+1. Developer imports the TypeScript library or uses the CLI.
+2. The shared RPC layer calls Fiber JSON-RPC methods.
+3. Domain modules handle peer connection, pre-open checks, lifecycle tracking, diagnostics, payments, and close safety.
+4. The React dashboard reuses the same core logic and exposes it visually.
+5. For hosted deployments, the web app uses the serverless RPC proxy in [`web/api/fiber-rpc.ts`](./web/api/fiber-rpc.ts).
+
+High-level architecture:
+
+- Fiber node: source of truth for peers, channels, payments, and wallet-backed operations
+- Channel Doctor core: TypeScript logic for RPC calls, normalization, safety checks, and diagnostics
+- CLI: scriptable operator interface
+- React dashboard: visual operator interface for the same workflows
+- Vercel/serverless proxy: optional hosted bridge for web deployments
+
+### 5. Setup Environment
+
+Local environment:
+
+- Node.js `18+`
+- npm
+- TypeScript
+- React + Vite in [`web/`](./web)
+- Vitest for test coverage
+- a reachable Fiber node RPC endpoint, typically `http://127.0.0.1:8227`
+
+Local development stack:
+
+- root package for the shared library and CLI
+- Vite development server for the dashboard
+- serverless-style Fiber RPC proxy for local and hosted web usage
+- optional local or testnet Fiber node for live integration testing
+
+Typical local setup:
+
+```bash
+npm install
+npm --prefix web install
+npm run build
+npm run web:dev
+```
+
+### 6. Tooling
+
+Channel Doctor uses the following Fiber / CKB tooling and infrastructure:
+
+- Fiber JSON-RPC methods such as `list_peers`, `connect_peer`, `open_channel`, `list_channels`, `get_payment`, and related node operations
+- Fiber node (`fnn`) as the backend execution layer
+- Fiber CLI (`fnn-cli`) for direct validation and comparison during development
+- CKB testnet RPC configured through the Fiber node
+- Vercel serverless function pattern for hosted RPC proxying
+- TypeScript, React, Vite, and Vitest for application and test tooling
+
+The project does not replace Fiber scripts or the Fiber node. It builds operator-facing infrastructure on top of them.
+
+### 7. Current Functionality
+
+Current functionality includes:
+
+- channel status listing with normalized balances, usable capacity, and readable state names
+- peer connection flow that verifies a connected peer appears in peer listings
+- pre-open checks for node reachability, connected peer presence, reserve clearance, amount sanity, and conflicting channel detection
+- channel opening flow that tracks the correct newly created channel instead of guessing by peer alone
+- diagnostics that explain whether a channel is healthy, not ready, lacking usable liquidity, delayed by gossip, or otherwise constrained
+- payment readiness checks that estimate whether local outgoing liquidity is sufficient
+- payment tracking by payment hash
+- pre-close checks that warn when TLCs are still in flight or when close timing is unsafe
+- reusable TypeScript exports for developers who want to embed the same logic in their own tools
+- web dashboard for visually running the same workflows without using raw RPC or shell commands
+
+### 8. Future Functionality
+
+Beyond the hackathon, the project could be extended with:
+
+- support for authenticated public RPC endpoints, including Biscuit-authenticated Fiber deployments
+- version-aware close and shutdown flows for newer Fiber RPC variants
+- richer payment tooling, including invoice creation and guided send flows
+- channel history, event timelines, and explorer-style diagnostics
+- liquidity planning and routing analysis across multiple channels
+- multi-asset operational workflows for additional UDTs beyond the current known mappings
+- guided deployment mode for judge-ready hosted demos with a managed Fiber backend
+- better observability, logging surfaces, and automated remediation suggestions
+
 
 ## License
 
-UNLICENSED
+MIT. See [LICENSE](./LICENSE).

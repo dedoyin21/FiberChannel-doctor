@@ -14,7 +14,7 @@ describe('network - connectPeer', () => {
   it('confirms the exact peer id when it appears in list_peers', async () => {
     vi.spyOn(client.fiberRpc, 'listPeers')
       .mockResolvedValueOnce({ peers: [] })
-      .mockResolvedValueOnce({ peers: [{ peer_id: PEER_ID, connected_addr: '/ip4/102.89.34.243/tcp/8228' }] })
+      .mockResolvedValueOnce({ peers: [{ peer_id: PEER_ID, connected_addr: '/ip4/102.89.34.243/tcp/8228', pubkey: null }] })
     vi.spyOn(client.fiberRpc, 'connectPeer').mockResolvedValue()
 
     const result = await connectPeer(CONFIG, MULTIADDR)
@@ -27,7 +27,7 @@ describe('network - connectPeer', () => {
     vi.spyOn(client.fiberRpc, 'listPeers')
       .mockResolvedValueOnce({ peers: [] })
       .mockResolvedValueOnce({
-        peers: [{ peer_id: '0207142582c15f8bbab144ab35fe340cc62f98ee8e3e63b8b23d7177d4d9909201', connected_addr: '/ip4/102.89.34.243/tcp/8228' }],
+        peers: [{ peer_id: '0207142582c15f8bbab144ab35fe340cc62f98ee8e3e63b8b23d7177d4d9909201', connected_addr: '/ip4/102.89.34.243/tcp/8228', pubkey: null }],
       })
     vi.spyOn(client.fiberRpc, 'connectPeer').mockResolvedValue()
 
@@ -38,11 +38,11 @@ describe('network - connectPeer', () => {
 
   it('falls back to the single new peer when the connected address is not exposed', async () => {
     vi.spyOn(client.fiberRpc, 'listPeers')
-      .mockResolvedValueOnce({ peers: [{ peer_id: 'QmExisting', connected_addr: '/ip4/1.2.3.4/tcp/8228' }] })
+      .mockResolvedValueOnce({ peers: [{ peer_id: 'QmExisting', connected_addr: '/ip4/1.2.3.4/tcp/8228', pubkey: null }] })
       .mockResolvedValueOnce({
         peers: [
-          { peer_id: 'QmExisting', connected_addr: '/ip4/1.2.3.4/tcp/8228' },
-          { peer_id: '0207142582c15f8bbab144ab35fe340cc62f98ee8e3e63b8b23d7177d4d9909201', connected_addr: null },
+          { peer_id: 'QmExisting', connected_addr: '/ip4/1.2.3.4/tcp/8228', pubkey: null },
+          { peer_id: '0207142582c15f8bbab144ab35fe340cc62f98ee8e3e63b8b23d7177d4d9909201', connected_addr: null, pubkey: null },
         ],
       })
     vi.spyOn(client.fiberRpc, 'connectPeer').mockResolvedValue()

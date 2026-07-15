@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { rpcCall } from '../src/rpc/client.js'
+import { fiberRpc, rpcCall } from '../src/rpc/client.js'
 
 describe('rpc client', () => {
   afterEach(() => {
@@ -54,5 +54,34 @@ describe('rpc client', () => {
       method: 'node_info',
       message: 'Cannot reach Fiber node at http://127.0.0.1:8227: socket hang up',
     }))
+  })
+
+  it('normalizes list_peers responses from newer Fiber nodes', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        result: {
+          peers: [
+            {
+              pubkey: '0207142582c15f8bbab144ab35fe340cc62f98ee8e3e63b8b23d7177d4d9909201',
+              address: '/ip4/102.89.34.243/tcp/8228/p2p/QmU2xGRcAu5eeMoiqeqbTP3utQhYKYje8Ycn3Rh1qXHrFu',
+            },
+          ],
+        },
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    ))
+
+    await expect(fiberRpc.listPeers({ url: 'http://127.0.0.1:8227' })).resolves.toEqual({
+      peers: [
+        {
+          peer_id: 'QmU2xGRcAu5eeMoiqeqbTP3utQhYKYje8Ycn3Rh1qXHrFu',
+          connected_addr: '/ip4/102.89.34.243/tcp/8228/p2p/QmU2xGRcAu5eeMoiqeqbTP3utQhYKYje8Ycn3Rh1qXHrFu',
+        },
+      ],
+    })
   })
 })
