@@ -81,7 +81,8 @@ rpc:
   # By default RPC only binds to localhost, thus it only allows accessing from the same machine.
   # Allowing arbitrary machines to access the JSON-RPC port is dangerous and strongly discouraged.
   # Please strictly limit the access to only trusted machines.
-  listening_addr: "127.0.0.1:8227"
+  listening_addr: "0.0.0.0:8227"
+  biscuit_public_key: "ed25519-private/152cff18c3b7bc4787512083593ccee551eb627ea6f798a1890dddf38a033b3e"
 
 ckb:
   rpc_url: "https://testnet.ckbapp.dev/"

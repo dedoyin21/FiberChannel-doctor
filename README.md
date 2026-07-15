@@ -68,6 +68,12 @@ Public testnet shortcut used by the CLI and dashboard:
 http://18.162.235.225:8227
 ```
 
+Note:
+
+- the public testnet shortcut is best for read-oriented checks
+- state-changing methods such as peer connection, channel open, payment send, or close can be blocked on shared RPC endpoints
+- for full judge testing, use a Fiber node you control
+
 ## Local Setup
 
 Install dependencies for both the root package and the web app:
@@ -115,6 +121,7 @@ node dist/cli/index.js watch <channelId>
 Useful global flags:
 
 - `--rpc-url <url>` points to a specific Fiber node
+- `--auth-token <token>` sends a Bearer token to authenticated Fiber RPC endpoints
 - `--testnet` uses the public testnet RPC
 - `--json` emits machine-readable output
 
@@ -150,6 +157,8 @@ The `web/` app is a React dashboard for running the same checks visually. It reu
 - local development middleware in `web/vite.config.ts`
 - a serverless function in [`web/api/fiber-rpc.ts`](./web/api/fiber-rpc.ts) for hosted deployments
 
+The dashboard also supports an optional RPC auth token field for Biscuit-authenticated Fiber nodes. The token is forwarded as a Bearer token through the hosted RPC proxy.
+
 The dashboard supports:
 
 - channel status
@@ -176,7 +185,17 @@ This repository is ready to be connected to GitHub and deployed with Vercel.
 ```json
 {
   "buildCommand": "vite build",
-  "outputDirectory": "dist"
+  "outputDirectory": "dist",
+  "rewrites": [
+    {
+      "source": "/dashboard",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/dashboard/(.*)",
+      "destination": "/index.html"
+    }
+  ]
 }
 ```
 
@@ -187,6 +206,8 @@ Important deployment note:
 - the hosted dashboard can only reach Fiber RPC endpoints that are publicly reachable from Vercel
 - `http://127.0.0.1:8227` works for local development, but not from a deployed Vercel app
 - for a hosted deployment, enter a public or otherwise reachable RPC endpoint in the dashboard
+- if the hosted Fiber node requires Biscuit authentication, paste its Bearer token into the dashboard before attempting write actions
+- the shared public testnet node is not suitable for full end-to-end judge testing of state-changing flows
 
 ### Option 2: Use the repo as a CLI/library only
 
@@ -305,6 +326,7 @@ npm run web:dev
 Channel Doctor uses the following Fiber / CKB tooling and infrastructure:
 
 - Fiber JSON-RPC methods such as `list_peers`, `connect_peer`, `open_channel`, `list_channels`, `get_payment`, and related node operations
+- Fiber RPC close variants including `close_channel` and `shutdown_channel`
 - Fiber node (`fnn`) as the backend execution layer
 - Fiber CLI (`fnn-cli`) for direct validation and comparison during development
 - CKB testnet RPC configured through the Fiber node

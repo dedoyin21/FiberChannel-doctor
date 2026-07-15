@@ -47,6 +47,7 @@ interface FormField {
 
 interface DashboardState {
   rpcTarget: string
+  rpcAuthToken: string
   peerId: string
   channelId: string
   multiaddr: string
@@ -119,7 +120,7 @@ const RPC_METHODS = [
   { method: 'open_channel', purpose: 'Create a new channel against a selected peer.' },
   { method: 'graph_channels', purpose: 'Check whether a public channel has propagated into the network graph.' },
   { method: 'get_payment', purpose: 'Track payment status over time.' },
-  { method: 'close_channel', purpose: 'Submit a close request.' },
+  { method: 'close_channel / shutdown_channel', purpose: 'Submit a close request across Fiber RPC versions.' },
 ] as const
 
 const EXAMPLES = {
@@ -135,6 +136,7 @@ function App(): JSX.Element {
   const [view, setView] = useState<View>(() => viewFromPathname(window.location.pathname))
   const [dashboardState, setDashboardState] = useState<DashboardState>({
     rpcTarget: DEFAULT_RPC_URL,
+    rpcAuthToken: '',
     peerId: '',
     channelId: '',
     multiaddr: '',
@@ -246,7 +248,10 @@ function DashboardPage({
   const [closeCheckPanel, setCloseCheckPanel] = useState<PanelState<{ safe: boolean; checks: CloseCheck[] }>>({ status: 'idle' })
   const [closePanel, setClosePanel] = useState<PanelState<{ ok: true; channelId: string; force: boolean }>>({ status: 'idle' })
 
-  const config: RpcConfig = { url: `/api/fiber-rpc?target=${encodeURIComponent(state.rpcTarget)}` }
+  const config: RpcConfig = {
+    url: `/api/fiber-rpc?target=${encodeURIComponent(state.rpcTarget)}`,
+    ...(state.rpcAuthToken.trim() ? { authToken: state.rpcAuthToken.trim() } : {}),
+  }
   const rpcHint = getRpcTargetHint(state.rpcTarget)
 
   function patchState(patch: Partial<DashboardState>): void {
@@ -300,6 +305,17 @@ function DashboardPage({
                   onChange={(event) => patchState({ rpcTarget: event.target.value })}
                   className="w-full rounded-2xl border border-carbon/15 bg-chalk px-4 py-3 font-mono text-sm outline-none transition focus:border-lagoon focus:ring-2 focus:ring-lagoon/15"
                   placeholder={DEFAULT_RPC_URL}
+                />
+              </label>
+
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-carbon/80">RPC auth token (optional)</span>
+                <input
+                  type="password"
+                  value={state.rpcAuthToken}
+                  onChange={(event) => patchState({ rpcAuthToken: event.target.value })}
+                  className="w-full rounded-2xl border border-carbon/15 bg-chalk px-4 py-3 font-mono text-sm outline-none transition focus:border-lagoon focus:ring-2 focus:ring-lagoon/15"
+                  placeholder="Paste a Bearer token for Biscuit-authenticated nodes"
                 />
               </label>
 
@@ -585,6 +601,7 @@ function DocsPage({ rpcTarget, onOpenDashboard }: { rpcTarget: string; onOpenDas
               'Run `npm install` in the repo root and `npm run build`.',
               'Start the browser UI with `cd web` and `npm run dev`.',
               `Point the RPC target to your node, usually \`${DEFAULT_RPC_URL}\`.`,
+              'If the node uses Biscuit auth, paste the Bearer token into the dashboard before running write actions.',
               'Open the dashboard and run the action you need.',
             ]}
           />
@@ -641,6 +658,7 @@ function DocsPage({ rpcTarget, onOpenDashboard }: { rpcTarget: string; onOpenDas
           <BulletList
             items={[
               'Dashboard calls the shared TypeScript core, which calls Fiber RPC through the dev proxy.',
+              'Hosted or public nodes may require a Bearer token; the dashboard forwards it to the RPC proxy.',
               'Open tracking follows the newly opened channel instead of guessing.',
               'Capacity checks are local liquidity checks, not full route proof.',
               'Best fit today: operator tooling and diagnostics infrastructure.',

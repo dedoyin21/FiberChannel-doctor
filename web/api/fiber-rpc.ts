@@ -53,17 +53,27 @@ function concatChunks(chunks: Uint8Array[]): Uint8Array {
   return combined
 }
 
+function firstHeaderValue(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value
+}
+
 export default async function handler(req: RequestLike, res: ResponseLike): Promise<void> {
   res.setHeader('Cache-Control', 'no-store')
 
   try {
     const target = getTarget(req)
     const body = req.method === 'GET' || req.method === 'HEAD' ? undefined : await readBody(req)
+    const contentType = firstHeaderValue(req.headers['content-type']) ?? 'application/json'
+    const authorization = firstHeaderValue(req.headers.authorization)
+    const headers: Record<string, string> = {
+      'Content-Type': contentType,
+    }
+
+    if (authorization) headers.Authorization = authorization
+
     const upstream = await fetch(target, {
       method: req.method ?? 'POST',
-      headers: {
-        'Content-Type': typeof req.headers['content-type'] === 'string' ? req.headers['content-type'] : 'application/json',
-      },
+      headers,
       body: body ? new Uint8Array(body) : undefined,
     })
 

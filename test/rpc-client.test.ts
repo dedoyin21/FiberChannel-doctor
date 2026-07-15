@@ -56,6 +56,28 @@ describe('rpc client', () => {
     }))
   })
 
+  it('adds a bearer authorization header when an auth token is configured', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { version: '0.9.0-rc7', pubkey: '02', features: [], addresses: [] } }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await rpcCall(
+      { url: 'http://127.0.0.1:8227', authToken: 'demo-token' },
+      'node_info',
+      [],
+    )
+
+    expect(fetchMock).toHaveBeenCalledWith('http://127.0.0.1:8227', expect.objectContaining({
+      headers: expect.objectContaining({
+        Authorization: 'Bearer demo-token',
+      }),
+    }))
+  })
+
   it('normalizes list_peers responses from newer Fiber nodes', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
       new Response(JSON.stringify({
@@ -80,6 +102,7 @@ describe('rpc client', () => {
         {
           peer_id: 'QmU2xGRcAu5eeMoiqeqbTP3utQhYKYje8Ycn3Rh1qXHrFu',
           connected_addr: '/ip4/102.89.34.243/tcp/8228/p2p/QmU2xGRcAu5eeMoiqeqbTP3utQhYKYje8Ycn3Rh1qXHrFu',
+          pubkey: '0207142582c15f8bbab144ab35fe340cc62f98ee8e3e63b8b23d7177d4d9909201',
         },
       ],
     })

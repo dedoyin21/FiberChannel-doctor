@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { checkClose } from '../src/pre-close/index.js'
+import { checkClose, closeChannel } from '../src/pre-close/index.js'
 import * as client from '../src/rpc/client.js'
-import type { RawChannel } from '../src/rpc/client.js'
+import { RpcError, type RawChannel } from '../src/rpc/client.js'
 
 const CONFIG = { url: 'http://127.0.0.1:8227' }
 const BASE: RawChannel = {
@@ -34,5 +34,14 @@ describe('pre-close', () => {
   it('throws when channel not found', async () => {
     vi.spyOn(client.fiberRpc, 'listChannels').mockResolvedValue({ channels: [] })
     await expect(checkClose(CONFIG, '0xdeadbeef')).rejects.toThrow('not found')
+  })
+
+  it('falls back to shutdown_channel when close_channel is unavailable', async () => {
+    vi.spyOn(client.fiberRpc, 'listChannels').mockResolvedValue({ channels: [BASE] })
+    vi.spyOn(client.fiberRpc, 'closeChannel').mockRejectedValue(new RpcError('Method not found', -32601, 'close_channel'))
+    const shutdownSpy = vi.spyOn(client.fiberRpc, 'shutdownChannel').mockResolvedValue()
+
+    await expect(closeChannel(CONFIG, BASE.channel_id, { force: true })).resolves.toBeUndefined()
+    expect(shutdownSpy).toHaveBeenCalledWith(CONFIG, { channel_id: BASE.channel_id, force: true })
   })
 })

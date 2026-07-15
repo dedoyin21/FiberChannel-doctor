@@ -1,5 +1,5 @@
 import type { RpcConfig } from '../rpc/client.js'
-import { fiberRpc } from '../rpc/client.js'
+import { fiberRpc, RpcError } from '../rpc/client.js'
 import { normalizeChannel, type NormalizedChannel } from '../lifecycle/index.js'
 
 export interface CloseCheckResult {
@@ -66,6 +66,22 @@ export async function closeChannel(
   }
 
   onProgress(force ? 'Force-closing channel...' : 'Cooperatively closing channel...')
-  await fiberRpc.closeChannel(config, channelId, force)
+  try {
+    await fiberRpc.closeChannel(config, channelId, force)
+  } catch (error) {
+    if (!isMethodNotFound(error)) throw error
+
+    onProgress('close_channel is unavailable on this Fiber version, retrying with shutdown_channel...')
+    await fiberRpc.shutdownChannel(config, { channel_id: channelId, force })
+  }
+
   onProgress('Close request submitted [ok]')
+}
+
+function isMethodNotFound(error: unknown): boolean {
+  if (error instanceof RpcError) {
+    return error.code === -32601 || error.message.toLowerCase().includes('method not found')
+  }
+
+  return error instanceof Error && error.message.toLowerCase().includes('method not found')
 }

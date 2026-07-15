@@ -1,6 +1,7 @@
 export interface RpcConfig {
   url: string
   timeout?: number
+  authToken?: string
 }
 
 export class RpcError extends Error {
@@ -15,7 +16,7 @@ export class RpcError extends Error {
 }
 
 let _requestId = 0
-const STATE_CHANGING_METHODS = new Set(['connect_peer', 'open_channel', 'send_payment', 'close_channel'])
+const STATE_CHANGING_METHODS = new Set(['connect_peer', 'open_channel', 'send_payment', 'close_channel', 'shutdown_channel'])
 
 export async function rpcCall<T>(
   config: RpcConfig,
@@ -29,7 +30,7 @@ export async function rpcCall<T>(
   try {
     const res = await fetch(config.url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: buildRequestHeaders(config),
       body: JSON.stringify({ jsonrpc: '2.0', id, method, params }),
       signal: controller.signal,
     })
@@ -89,6 +90,23 @@ function formatHttpErrorMessage(status: number, method: string, detail: string |
 
 function truncateErrorBody(body: string): string {
   return body.length > 300 ? `${body.slice(0, 297)}...` : body
+}
+
+function buildRequestHeaders(config: RpcConfig): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+
+  const authorization = formatAuthorizationHeader(config.authToken)
+  if (authorization) headers.Authorization = authorization
+
+  return headers
+}
+
+function formatAuthorizationHeader(authToken?: string): string | null {
+  const trimmed = authToken?.trim()
+  if (!trimmed) return null
+  return /^bearer\s+/i.test(trimmed) ? trimmed : `Bearer ${trimmed}`
 }
 
 export interface Peer { peer_id: string; connected_addr: string | null; pubkey: string | null }
@@ -156,6 +174,10 @@ export const fiberRpc = {
     rpcCall<RawPayment>(cfg, 'send_payment', [params]),
   getPayment: (cfg: RpcConfig, payment_hash: string) => rpcCall<RawPayment>(cfg, 'get_payment', [{ payment_hash }]),
   closeChannel: (cfg: RpcConfig, channel_id: string, force = false) => rpcCall<void>(cfg, 'close_channel', [{ channel_id, force }]),
+  shutdownChannel: (
+    cfg: RpcConfig,
+    params: { channel_id: string; force?: boolean; close_script?: unknown; fee_rate?: string | number },
+  ) => rpcCall<void>(cfg, 'shutdown_channel', [params]),
 }
 
 function normalizePeer(peer: RawPeerV1 | RawPeerV2): Peer {

@@ -52,10 +52,11 @@ function hasCliOption(flag: string): boolean {
   return process.argv.includes(flag) || process.argv.some((arg) => arg.startsWith(`${flag}=`))
 }
 
-function resolveConfig(cmd: CommanderCommand): { url: string } {
-  const opts = cmd.optsWithGlobals() as { rpcUrl: string; testnet?: boolean }
+function resolveConfig(cmd: CommanderCommand): { url: string; authToken?: string } {
+  const opts = cmd.optsWithGlobals() as { rpcUrl: string; testnet?: boolean; authToken?: string }
   const url = hasCliOption('--rpc-url') ? opts.rpcUrl : opts.testnet ? TESTNET_RPC_URL : opts.rpcUrl
-  return { url }
+  const authToken = opts.authToken?.trim()
+  return authToken ? { url, authToken } : { url }
 }
 
 function shouldUseJson(cmd: CommanderCommand): boolean {
@@ -98,6 +99,7 @@ program
   .description('Channel lifecycle guardrails and diagnostics for Fiber Network')
   .version('0.1.0')
   .addOption(new Option('--rpc-url <url>', 'Fiber node RPC URL').default(DEFAULT_RPC_URL).env('FIBER_RPC_URL'))
+  .addOption(new Option('--auth-token <token>', 'Bearer token for authenticated Fiber RPC endpoints').env('FIBER_RPC_AUTH_TOKEN'))
   .addOption(new Option('--json', 'Print machine-readable JSON output'))
   .addOption(new Option('--testnet', 'Use the public Fiber testnet RPC node'))
 

@@ -1,0 +1,9 @@
+right("info", "read");
+right("graph", "read");
+right("peer", "read");
+right("peer", "write");
+right("channel", "read");
+right("channel", "write");
+right("payment", "read");
+right("payment", "write");
+check if time($time), $time <= 2026-08-31T23:59:59Z;
